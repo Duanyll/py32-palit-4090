@@ -1,0 +1,36 @@
+{
+    "configurations": [
+        {
+            "toolchainPrefix": "arm-none-eabi",
+            "name": "Cortex Debug",
+            "cwd": "${workspaceFolder}",
+            "executable": "${workspaceFolder}/build/py32app.elf",
+            "request": "launch", // can be launch or attach
+            "type": "cortex-debug",
+            "runToEntryPoint": "Reset_Handler", // "main" or other function name. runToMain is deprecated
+            "servertype": "pyocd", // jlink, openocd, pyocd, pe and stutil
+            "device": "py32f002ax5",
+            "interface": "swd",
+            "preLaunchTask": "CMake: build", // Set this to run a task from tasks.json before starting a debug session
+            // "preLaunchCommands": ["Build all"], // Uncomment this if not using preLaunchTask
+            "svdFile": "${workspaceFolder}/Libs/Misc/SVD/py32f002axx.svd", // svd for this part number
+            "showDevDebugOutput": "vscode", // parsed, raw, vscode:vscode log and raw
+            "swoConfig": {
+                "enabled": true,
+                "cpuFrequency": 24000000, // Target CPU frequency in Hz
+                "swoFrequency": 4000000,
+                "source": "probe", // either be “probe” to get directly from the debug probe, 
+                // or a serial port device to use a serial port external to the debug probe.
+                "decoders": [
+                    {
+                        "label": "ITM port 0 output",
+                        "type": "console",
+                        "port": 0,
+                        "showOnStartup": true,
+                        "encoding": "ascii"
+                    }
+                ]
+            }
+        }
+    ]
+}

@@ -1,0 +1,21 @@
+{
+    "clangd.arguments": [
+        "-query-driver=*",
+        "-clang-tidy",
+        "-header-insertion=never"
+    ],
+    "cmake.generator": "Ninja",
+    "cmake.configureOnOpen": true,
+    "[c]": {
+        "editor.wordBasedSuggestions": "off",
+        "editor.suggest.insertMode": "replace",
+        "editor.semanticHighlighting.enabled": true,
+        "editor.tabSize": 2,
+    },
+    "[cpp]": {
+        "editor.wordBasedSuggestions": "off",
+        "editor.suggest.insertMode": "replace",
+        "editor.semanticHighlighting.enabled": true,
+        "editor.tabSize": 2,
+    }
+}
