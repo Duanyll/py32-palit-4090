@@ -6,14 +6,17 @@
   * This demo shows how to config reset pin as gpio output
   */
 
+#include <stdlib.h>
 #include <string.h>
 #include "main.h"
 #include "py32f0xx_bsp_clock.h"
 #include "py32f0xx_ll_spi.h"
 #include "py32f0xx_ll_tim.h"
 
-#define APP_LED_MODE_COUNT 16
-static int led_mode = 0;
+#define APP_LED_MODE_COUNT 9
+#define LED_BRIGTHNESS_COUNT 5
+int led_mode = 0;
+int led_brightness = 1;
 
 static void APP_GPIOConfig(void);
 static void APP_FlashSetOptionBytes(void);
@@ -24,16 +27,20 @@ static void APP_UpdateLed(void);
 
 uint8_t SPI_TxRxByte(uint8_t data);
 
-#define WS2812_NUM_LEDS 64
+#define WS2812_NUM_LEDS 22
 #define WS2812_SPI_HANDLE Spi1Handle
-
 #define WS2812_RESET_PULSE 60
 #define WS2812_BUFFER_SIZE (WS2812_NUM_LEDS * 24 + WS2812_RESET_PULSE)
+uint8_t ws2812_buffer[WS2812_BUFFER_SIZE];
 
 void ws2812_init(void);
 void ws2812_send_spi(void);
 void ws2812_pixel(uint16_t led_no, uint8_t r, uint8_t g, uint8_t b);
 void ws2812_pixel_all(uint8_t r, uint8_t g, uint8_t b);
+
+struct LED_Pixel {
+  uint8_t r, g, b;
+} fx_buffer[WS2812_NUM_LEDS];
 
 int main(void)
 {
@@ -190,13 +197,59 @@ static void APP_StepFanSpeed(void)
 
 static void APP_ScanButtons(void) {
   static int last_btn1 = 1, last_btn2 = 1;
+  static int btn2_click_time = -1;
   int btn1 = LL_GPIO_IsInputPinSet(GPIOA, LL_GPIO_PIN_1);
   int btn2 = LL_GPIO_IsInputPinSet(GPIOA, LL_GPIO_PIN_2);
   if (btn1 == 0 && last_btn1 == 1) {
     APP_StepFanSpeed();
   }
   if (btn2 == 0 && last_btn2 == 1) {
-    led_mode = (led_mode + 1) % APP_LED_MODE_COUNT;
+    if (btn2_click_time == -1) {
+      btn2_click_time = 0;
+    } else if (btn2_click_time < 20) {
+      // Double click
+      led_mode = (led_mode + 1) % APP_LED_MODE_COUNT;
+      btn2_click_time = -1;
+    }
+  } else {
+    if (btn2_click_time != -1) {
+      btn2_click_time++;
+      if (btn2_click_time >= 20) {
+        // Single click
+        led_brightness = (led_brightness + 1) % LED_BRIGTHNESS_COUNT;
+        btn2_click_time = -1;
+      }
+    }
+  }
+  last_btn1 = btn1;
+  last_btn2 = btn2;
+}
+
+static void LED_MakeRainbow(uint8_t wheel, int n) {
+  if (wheel < 85) {
+    ws2812_pixel(n, wheel * 3, 255 - wheel * 3, 0);
+  } else if (wheel < 170) {
+    wheel -= 85;
+    ws2812_pixel(n, 255 - wheel * 3, 0, wheel * 3);
+  } else {
+    wheel -= 170;
+    ws2812_pixel(n, 0, wheel * 3, 255 - wheel * 3);
+  }
+}
+
+static void LED_MakeStarry(int state) {
+  if (state % 6 == 0) {
+    int pos = rand() % WS2812_NUM_LEDS;
+    fx_buffer[pos].r = rand() % 256;
+    fx_buffer[pos].g = rand() % 256;
+    fx_buffer[pos].b = rand() % 256;
+  }
+  // Decay
+  for (int i = 0; i < WS2812_NUM_LEDS; i++) {
+    fx_buffer[i].r = fx_buffer[i].r * 79 / 80;
+    fx_buffer[i].g = fx_buffer[i].g * 79 / 80;
+    fx_buffer[i].b = fx_buffer[i].b * 79 / 80;
+    ws2812_pixel(i, fx_buffer[i].r, fx_buffer[i].g, fx_buffer[i].b);
   }
 }
 
@@ -204,9 +257,44 @@ static void APP_UpdateLed(void) {
   static uint32_t state = 0;
   state++;
   switch (led_mode) {
+  case 0:
+    // Flowing rainbow
+    for (int i = 0; i < WS2812_NUM_LEDS; ++i) {
+      LED_MakeRainbow((state + i * 8) % 256, i);
+    }
+    break;
+  case 1:
+    // Starry
+    LED_MakeStarry(state);
+    break;
+  case 2:
+    // All red
+    ws2812_pixel_all(0xFF, 0, 0);
+    break;
+  case 3:
+    // All green
+    ws2812_pixel_all(0, 0xFF, 0);
+    break;
+  case 4:
+    // All blue
+    ws2812_pixel_all(0, 0, 0xFF);
+    break;
+  case 5:
+    // All yellow
+    ws2812_pixel_all(0xFF, 0xFF, 0);
+    break;
+  case 6:
+    // All purple
+    ws2812_pixel_all(0xFF, 0, 0xFF);
+    break;
+  case 7:
+    // All cyan
+    ws2812_pixel_all(0, 0xFF, 0xFF);
+    break;
   default:
     // All white
     ws2812_pixel_all(0xFF, 0xFF, 0xFF);
+    break;
   }
   ws2812_send_spi();
 }
@@ -237,8 +325,6 @@ uint8_t SPI_TxRxByte(uint8_t data) {
     }                                                                          \
   }
 
-uint8_t ws2812_buffer[WS2812_BUFFER_SIZE];
-
 void ws2812_init(void) {
   memset(ws2812_buffer, 0, WS2812_BUFFER_SIZE);
   ws2812_send_spi();
@@ -252,6 +338,9 @@ void ws2812_send_spi(void) {
 }
 
 void ws2812_pixel(uint16_t led_no, uint8_t r, uint8_t g, uint8_t b) {
+  r = r * led_brightness / (LED_BRIGTHNESS_COUNT - 1);
+  g = g * led_brightness / (LED_BRIGTHNESS_COUNT - 1);
+  b = b * led_brightness / (LED_BRIGTHNESS_COUNT - 1);
   uint8_t *ptr = &ws2812_buffer[24 * led_no];
   WS2812_FILL_BUFFER(g);
   WS2812_FILL_BUFFER(r);
@@ -259,6 +348,9 @@ void ws2812_pixel(uint16_t led_no, uint8_t r, uint8_t g, uint8_t b) {
 }
 
 void ws2812_pixel_all(uint8_t r, uint8_t g, uint8_t b) {
+  r = r * led_brightness / (LED_BRIGTHNESS_COUNT - 1);
+  g = g * led_brightness / (LED_BRIGTHNESS_COUNT - 1);
+  b = b * led_brightness / (LED_BRIGTHNESS_COUNT - 1);
   uint8_t *ptr = ws2812_buffer;
   for (uint16_t i = 0; i < WS2812_NUM_LEDS; ++i) {
     WS2812_FILL_BUFFER(g);
